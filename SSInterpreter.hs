@@ -55,6 +55,7 @@ eval env lam@(List (Atom "lambda":(List formals):body:[])) = return lam
 -- the same semantics as redefining other functions, since define is not
 -- stored as a regular function because of its return type.
 eval env (List (Atom "define": args)) = maybe (define env args) (\v -> return v) (Map.lookup "define" env)
+eval env (List (Atom "if":cond:consequent:alternate:[])) = eval env cond >>= (\test -> ifThenElse env (test:consequent:alternate:[]))
 eval env (List (Atom func : args)) = mapM (eval env) args >>= apply env func 
 eval env (Error s)  = return (Error s)
 eval env form = return (Error ("Could not eval the special form: " ++ (show form)))
@@ -212,6 +213,32 @@ unpackNum (Number n) = n
 --- unpackNum a = ... -- Should never happen!!!!
 
 -----------------------------------------------------------
+--                       comments                        --
+-----------------------------------------------------------
+ignoreComments :: LispVal -> LispVal
+ignoreComments (List as) = (List (eraseCmnt as))
+ignoreComments xs = xs
+
+eraseCmnt :: [LispVal] -> [LispVal]
+eraseCmnt [] = []
+eraseCmnt ((Atom "comment"):(String cm):ls) = eraseCmnt ls -- we ignore the string cm, i.e., the comment
+eraseCmnt ((Atom func):args:body) = (Atom func):(ignoreComments args):(eraseCmnt body)
+eraseCmnt ((List args):ls) = (ignoreComments (List args)):(eraseCmnt ls)
+eraseCmnt (y:ys) = y:(eraseCmnt ys)
+
+-----------------------------------------------------------
+--                     control flow                      --
+-----------------------------------------------------------
+ifThenElse :: StateT -> [LispVal] -> StateTransformer LispVal
+ifThenElse env ((Bool cond):consequent:alternate:[]) = if (cond)
+                                                       then eval env consequent
+                                                       else eval env alternate
+ifThenElse env ((Bool cond):consequent:[])           = if (cond)
+                                                       then eval env consequent
+                                                       else return (Error "if without an else")
+ifThenElse env xs                                    = return (Error "wrong number of arguments.")
+
+-----------------------------------------------------------
 --                     main FUNCTION                     --
 -----------------------------------------------------------
 
@@ -223,5 +250,5 @@ getResult (ST f) = f empty -- we start with an empty state.
 
 main :: IO ()
 main = do args <- getArgs
-          putStr $ showResult $ getResult $ eval environment $ readExpr $ concat $ args 
+          putStr $ showResult $ getResult $ eval environment $ ignoreComments $readExpr $ concat $ args 
           
