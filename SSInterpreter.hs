@@ -135,7 +135,8 @@ environment =
           $ insert "mod"            (Native intMod) 
           $ insert "car"            (Native car)           
           $ insert "cdr"            (Native cdr)
-          $ insert "append"         (Native append)          
+          $ insert "append"         (Native append)
+          $ insert "cons"           (Native cons)          
             empty
 
 type StateT = Map String LispVal
@@ -314,6 +315,12 @@ append ((List a):(List b):[])       = (List (a++b))
 append args@((List a):(List b):cs)  = (Error ("wrong number of arguments in 'append' = "++(show args)))
 append args@((List a):[])           = (Error ("wrong number of arguments in 'append' = "++(show args)))
 append xs                           = (Error "not lists.")
+--
+
+-- cons
+cons :: [LispVal] -> LispVal
+cons (a:(List b):[]) = (List (a:b))
+cons xs = (Error ("invalid list construction = "++(show xs)))
 --
 
 -----------------------------------------------------------
