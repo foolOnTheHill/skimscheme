@@ -1,0 +1,17 @@
+----------------------------------
+--   Remaining functionalities  --
+----------------------------------
+
+* recursion;
+* let;
+* set!;
+* class declaration;
+* object instantiation;
+* attribute access;
+* calling methods;
+* object reference;
+* list-comp;
+* cons;
+* it?;
+* /;
+* eqv?;
