@@ -250,5 +250,5 @@ getResult (ST f) = f empty -- we start with an empty state.
 
 main :: IO ()
 main = do args <- getArgs
-          putStr $ showResult $ getResult $ eval environment $ ignoreComments $readExpr $ concat $ args 
-          
+          program <- readFile $ (args !! 0)
+          putStr $ showResult $ getResult $ eval environment $ ignoreComments $ readExpr $ program
