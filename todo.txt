@@ -2,7 +2,6 @@
 --   Remaining functionalities  --
 ----------------------------------
 
-* recursion;
 * let;
 * set!;
 * class declaration;
@@ -14,4 +13,3 @@
 * cons;
 * it?;
 * /;
-* eqv?;

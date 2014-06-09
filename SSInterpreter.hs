@@ -55,8 +55,14 @@ eval env lam@(List (Atom "lambda":(List formals):body:[])) = return lam
 -- the same semantics as redefining other functions, since define is not
 -- stored as a regular function because of its return type.
 eval env (List (Atom "define": args)) = maybe (define env args) (\v -> return v) (Map.lookup "define" env)
-eval env (List (Atom "if":cond:consequent:alternate:[])) = eval env cond >>= (\test -> ifThenElse env (test:consequent:alternate:[]))
+
+eval env (List (Atom "if":cond:consequent:alternate:[])) = ST (\s -> let (ST m) = eval env cond
+                                                                         (test, newEnv) = m s
+                                                                         (ST flow) = ifThenElse env (test:consequent:alternate:[])
+                                                                     in flow newEnv)
+
 eval env (List (Atom func : args)) = mapM (eval env) args >>= apply env func 
+eval env (List list) = return (List list)
 eval env (Error s)  = return (Error s)
 eval env form = return (Error ("Could not eval the special form: " ++ (show form)))
 
@@ -121,11 +127,12 @@ environment =
             insert "number?"        (Native predNumber)
           $ insert "boolean?"       (Native predBoolean)
           $ insert "list?"          (Native predList)
+          $ insert "eqv?"           (Native eqv)
           $ insert "+"              (Native numericSum) 
           $ insert "*"              (Native numericMult) 
           $ insert "-"              (Native numericSub) 
           $ insert "car"            (Native car)           
-          $ insert "cdr"            (Native cdr)           
+          $ insert "cdr"            (Native cdr)          
             empty
 
 type StateT = Map String LispVal
@@ -213,6 +220,28 @@ unpackNum (Number n) = n
 --- unpackNum a = ... -- Should never happen!!!!
 
 -----------------------------------------------------------
+--                      additionals                      --
+-----------------------------------------------------------
+
+-- eqv?
+eqv :: [LispVal] -> LispVal
+eqv ((Number a):(Number b):[]) = (Bool (a == b))
+eqv ((List a):(List b):[])     = (listEqv a b)
+eqv ((Number a):(List b):[])   = (Bool False)
+eqv ((List a):(Number b):[])   = (Bool False)
+eqv (_:[]) = (Error "wrong number of arguments on eqv?.")
+eqv xs = (Error ("wrong number of arguments on eqv? = "++(show xs)))
+
+listEqv [] [] = (Bool True)
+listEqv [] ys = (Bool False)
+listEqv xs [] = (Bool False)
+listEqv (x:xs) (y:ys) = if tmp == True
+                        then listEqv xs ys
+                        else (Bool False)
+    where (Bool tmp) = eqv (x:[y])  
+--
+
+-----------------------------------------------------------
 --                       comments                        --
 -----------------------------------------------------------
 ignoreComments :: LispVal -> LispVal
@@ -230,13 +259,14 @@ eraseCmnt (y:ys) = y:(eraseCmnt ys)
 --                     control flow                      --
 -----------------------------------------------------------
 ifThenElse :: StateT -> [LispVal] -> StateTransformer LispVal
-ifThenElse env ((Bool cond):consequent:alternate:[]) = if (cond)
+ifThenElse env ((Bool cond):consequent:alternate:[]) = if (cond == True)
                                                        then eval env consequent
                                                        else eval env alternate
-ifThenElse env ((Bool cond):consequent:[])           = if (cond)
+ifThenElse env ((Bool cond):consequent:[])           = if (cond == True)
                                                        then eval env consequent
-                                                       else return (Error "if without an else")
-ifThenElse env xs                                    = return (Error "wrong number of arguments.")
+                                                       else return (Error "if without an else.")
+ifThenElse env ((Error e):xs)                        = return (Error e)
+ifThenElse env xs                                    = return (Error ("wrong number of arguments on if-then-else = "++(show xs)))
 
 -----------------------------------------------------------
 --                     main FUNCTION                     --
