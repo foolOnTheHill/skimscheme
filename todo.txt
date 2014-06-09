@@ -13,3 +13,13 @@
 * cons;
 * it?;
 
+----------------------------------
+--           Finished           --
+----------------------------------
+
+* comments;
+* if-then-else;
+* recursion;
+* eqv?;
+* integer arithmetics: div, mod;
+* numerical relational operators: =, >, <, >=, <=;
