@@ -55,12 +55,7 @@ eval env lam@(List (Atom "lambda":(List formals):body:[])) = return lam
 -- the same semantics as redefining other functions, since define is not
 -- stored as a regular function because of its return type.
 eval env (List (Atom "define": args)) = maybe (define env args) (\v -> return v) (Map.lookup "define" env)
-
-eval env (List (Atom "if":cond:consequent:alternate:[])) = ST (\s -> let (ST m) = eval env cond
-                                                                         (test, newEnv) = m s
-                                                                         (ST flow) = ifThenElse env (test:consequent:alternate:[])
-                                                                     in flow newEnv)
-
+eval env (List (Atom "if":cond:consequent:alternate:[])) = eval env cond >>= (\t -> ifThenElse env (t:consequent:alternate:[]))
 eval env (List (Atom func : args)) = mapM (eval env) args >>= apply env func 
 eval env (List list) = return (List list)
 eval env (Error s)  = return (Error s)
@@ -128,9 +123,16 @@ environment =
           $ insert "boolean?"       (Native predBoolean)
           $ insert "list?"          (Native predList)
           $ insert "eqv?"           (Native eqv)
+          $ insert "="              (Native equalsTo)
+          $ insert ">"              (Native greaterThan)
+          $ insert "<"              (Native lessThan)
+          $ insert "<="             (Native lessThanOrEq)
+          $ insert ">="             (Native greaterThanOrEq) 
           $ insert "+"              (Native numericSum) 
           $ insert "*"              (Native numericMult) 
-          $ insert "-"              (Native numericSub) 
+          $ insert "-"              (Native numericSub)
+          $ insert "/"              (Native intDiv)
+          $ insert "mod"            (Native intMod) 
           $ insert "car"            (Native car)           
           $ insert "cdr"            (Native cdr)          
             empty
@@ -229,9 +231,10 @@ eqv ((Number a):(Number b):[]) = (Bool (a == b))
 eqv ((List a):(List b):[])     = (listEqv a b)
 eqv ((Number a):(List b):[])   = (Bool False)
 eqv ((List a):(Number b):[])   = (Bool False)
-eqv (_:[]) = (Error "wrong number of arguments on eqv?.")
-eqv xs = (Error ("wrong number of arguments on eqv? = "++(show xs)))
+eqv (_:[]) = (Error "wrong number of arguments in eqv?.")
+eqv args@(_:_:_) = (Error ("wrong number of arguments in eqv?."++(show args)))
 
+listEqv :: [LispVal] -> [LispVal] -> LispVal
 listEqv [] [] = (Bool True)
 listEqv [] ys = (Bool False)
 listEqv xs [] = (Bool False)
@@ -239,6 +242,69 @@ listEqv (x:xs) (y:ys) = if tmp == True
                         then listEqv xs ys
                         else (Bool False)
     where (Bool tmp) = eqv (x:[y])  
+--
+
+-- /
+intDiv :: [LispVal] -> LispVal
+intDiv [] = (Error "wrong number of arguments in /.")
+intDiv args@((Number x):[]) = (Error ("wrong number of arguments in / = "++(show args)))
+intDiv ((Number x):(Number y):[]) = (Number (div x y))
+intDiv args@((Number x):(Number y):xs) = (Error ("wrong number of arguments in / = "++(show args)))
+intDiv xs = (Error "not a number.")
+--
+
+-- mod
+intMod :: [LispVal] -> LispVal
+intMod [] = (Error "wrong number of arguments in mod.")
+intMod args@((Number x):[]) = (Error ("wrong number of arguments in mod = "++(show args)))
+intMod ((Number x):(Number y):[]) = (Number (mod x y))
+intMod args@((Number x):(Number y):xs) = (Error ("wrong number of arguments in mod = "++(show args)))
+intMod xs = (Error "not a number.")
+--
+
+-- =
+equalsTo :: [LispVal] -> LispVal
+equalsTo [] = (Error "wrong number of arguments in =.")
+equalsTo args@((Number x):[]) = (Error ("wrong number of arguments in = = "++(show args)))
+equalsTo ((Number x):(Number y):[]) = (Bool (x == y))
+equalsTo args@((Number x):(Number y):xs) = (Error ("wrong number of arguments in = = "++(show args)))
+equalsTo xs = (Error "not a number.")
+--
+
+-- >
+greaterThan :: [LispVal] -> LispVal
+greaterThan [] = (Error "wrong number of arguments in >.")
+greaterThan args@((Number x):[]) = (Error ("wrong number of arguments in > = "++(show args)))
+greaterThan ((Number x):(Number y):[]) = (Bool (x > y))
+greaterThan args@((Number x):(Number y):xs) = (Error ("wrong number of arguments in > = "++(show args)))
+greaterThan xs = (Error "not a number.")
+--
+
+-- <
+lessThan :: [LispVal] -> LispVal
+lessThan [] = (Error "wrong number of arguments in <.")
+lessThan args@((Number x):[]) = (Error ("wrong number of arguments in < = "++(show args)))
+lessThan ((Number x):(Number y):[]) = (Bool (x < y))
+lessThan args@((Number x):(Number y):xs) = (Error ("wrong number of arguments in < = "++(show args)))
+lessThan xs = (Error "not a number.")
+--
+
+-- >=
+greaterThanOrEq :: [LispVal] -> LispVal
+greaterThanOrEq [] = (Error "wrong number of arguments in >=.")
+greaterThanOrEq args@((Number x):[]) = (Error ("wrong number of arguments in >= = "++(show args)))
+greaterThanOrEq ((Number x):(Number y):[]) = (Bool (x >= y))
+greaterThanOrEq args@((Number x):(Number y):xs) = (Error ("wrong number of arguments in >= = "++(show args)))
+greaterThanOrEq xs = (Error "not a number.")
+--
+
+-- <=
+lessThanOrEq :: [LispVal] -> LispVal
+lessThanOrEq [] = (Error "wrong number of arguments in <=.")
+lessThanOrEq args@((Number x):[]) = (Error ("wrong number of arguments in <= = "++(show args)))
+lessThanOrEq ((Number x):(Number y):[]) = (Bool (x <= y))
+lessThanOrEq args@((Number x):(Number y):xs) = (Error ("wrong number of arguments in <= ="++(show args)))
+lessThanOrEq xs = (Error "not a number.")
 --
 
 -----------------------------------------------------------
@@ -266,7 +332,7 @@ ifThenElse env ((Bool cond):consequent:[])           = if (cond == True)
                                                        then eval env consequent
                                                        else return (Error "if without an else.")
 ifThenElse env ((Error e):xs)                        = return (Error e)
-ifThenElse env xs                                    = return (Error ("wrong number of arguments on if-then-else = "++(show xs)))
+ifThenElse env xs                                    = return (Error ("wrong number of arguments in a if-then-else = "++(show xs)))
 
 -----------------------------------------------------------
 --                     main FUNCTION                     --
