@@ -134,7 +134,8 @@ environment =
           $ insert "/"              (Native intDiv)
           $ insert "mod"            (Native intMod) 
           $ insert "car"            (Native car)           
-          $ insert "cdr"            (Native cdr)          
+          $ insert "cdr"            (Native cdr)
+          $ insert "append"         (Native append)          
             empty
 
 type StateT = Map String LispVal
@@ -227,10 +228,10 @@ unpackNum (Number n) = n
 
 -- eqv?
 eqv :: [LispVal] -> LispVal
+eqv ((String a):(String b):[]) = (Bool (a == b))
 eqv ((Number a):(Number b):[]) = (Bool (a == b))
 eqv ((List a):(List b):[])     = (listEqv a b)
-eqv ((Number a):(List b):[])   = (Bool False)
-eqv ((List a):(Number b):[])   = (Bool False)
+eqv (a:b:[])                   = (Bool False)
 eqv (_:[]) = (Error "wrong number of arguments in eqv?.")
 eqv args@(_:_:_) = (Error ("wrong number of arguments in eqv?."++(show args)))
 
@@ -305,6 +306,14 @@ lessThanOrEq args@((Number x):[]) = (Error ("wrong number of arguments in <= = "
 lessThanOrEq ((Number x):(Number y):[]) = (Bool (x <= y))
 lessThanOrEq args@((Number x):(Number y):xs) = (Error ("wrong number of arguments in <= ="++(show args)))
 lessThanOrEq xs = (Error "not a number.")
+--
+
+-- append
+append :: [LispVal] -> LispVal
+append ((List a):(List b):[])       = (List (a++b))
+append args@((List a):(List b):cs)  = (Error ("wrong number of arguments in 'append' = "++(show args)))
+append args@((List a):[])           = (Error ("wrong number of arguments in 'append' = "++(show args)))
+append xs                           = (Error "not lists.")
 --
 
 -----------------------------------------------------------
