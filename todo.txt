@@ -10,8 +10,6 @@
 * calling methods;
 * object reference;
 * list-comp;
-* cons;
-* it?;
 
 ----------------------------------
 --           Finished           --
@@ -23,3 +21,5 @@
 * eqv?;
 * integer arithmetics: div, mod;
 * numerical relational operators: =, >, <, >=, <=;
+* cons;
+* lt?;
