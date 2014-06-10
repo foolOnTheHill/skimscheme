@@ -25,7 +25,7 @@ even support recursion!).
 Written by Fernando Castor
 Started at: August 28th 2012
 Last update: December 17th 2012
-
+	
 -}
 
 module Main where
@@ -123,6 +123,7 @@ environment =
           $ insert "boolean?"       (Native predBoolean)
           $ insert "list?"          (Native predList)
           $ insert "eqv?"           (Native eqv)
+		  $ insert "lt?"            (Native lessThan)
           $ insert "="              (Native equalsTo)
           $ insert ">"              (Native greaterThan)
           $ insert "<"              (Native lessThan)
