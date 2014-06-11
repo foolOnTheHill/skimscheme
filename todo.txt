@@ -3,13 +3,11 @@
 ----------------------------------
 
 * let;
-* set!;
 * class declaration;
 * object instantiation;
 * attribute access;
 * calling methods;
 * object reference;
-* list-comp;
 
 ----------------------------------
 --           Finished           --
@@ -23,3 +21,5 @@
 * numerical relational operators: =, >, <, >=, <=;
 * cons;
 * lt?;
+* set!;
+* list-comp;
