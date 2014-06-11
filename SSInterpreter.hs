@@ -25,7 +25,7 @@ even support recursion!).
 Written by Fernando Castor
 Started at: August 28th 2012
 Last update: December 17th 2012
-	
+
 -}
 
 module Main where
@@ -56,6 +56,8 @@ eval env lam@(List (Atom "lambda":(List formals):body:[])) = return lam
 -- stored as a regular function because of its return type.
 eval env (List (Atom "define": args)) = maybe (define env args) (\v -> return v) (Map.lookup "define" env)
 eval env (List (Atom "if":cond:consequent:alternate:[])) = eval env cond >>= (\t -> ifThenElse env (t:consequent:alternate:[]))
+eval env (List (Atom "set!": args)) = maybe (set env args) (\v -> return v) (Map.lookup "set!" env)
+eval env (List (Atom "list-comp":var:list:result:condition:[])) = listComp env (var:list:result:condition:[])
 eval env (List (Atom func : args)) = mapM (eval env) args >>= apply env func 
 eval env (List list) = return (List list)
 eval env (Error s)  = return (Error s)
@@ -63,11 +65,9 @@ eval env form = return (Error ("Could not eval the special form: " ++ (show form
 
 stateLookup :: StateT -> String -> StateTransformer LispVal
 stateLookup env var = ST $ 
-  (\s -> 
-    (maybe (Error "variable does not exist.") 
-           id (Map.lookup var (union s env) 
-    ), s))
-
+  (\s t -> 
+    (maybe (Error "variable does not exist.") id (Map.lookup var (union (union t s) env)), s, t)
+  )
 
 -- Because of monad complications, define is a separate function that is not
 -- included in the state of the program. This saves  us from having to make
@@ -76,16 +76,26 @@ stateLookup env var = ST $
 -- not talking about local definitions. That's a completely different
 -- beast.
 define :: StateT -> [LispVal] -> StateTransformer LispVal
-define env [(Atom id), val] = defineVar env id val
-define env [(List [Atom id]), val] = defineVar env id val
+define env [(Atom id), val] = defineGlobal env id val
+define env [(List [Atom id]), val] = defineGlobal env id val
 -- define env [(List l), val]                                       
 define env args = return (Error "wrong number of arguments")
-defineVar env id val = 
-  ST (\s -> let (ST f)    = eval env val
-                (result, newState) = f s
-            in (result, (insert id result newState))
+
+-- Defines a global variable.
+defineGlobal :: StateT -> String -> LispVal -> StateTransformer LispVal
+defineGlobal env id val = 
+  ST (\s t -> let (ST f)                       = eval env val
+                  (result, newState, newLocal) = f s t
+              in (result, (insert id result newState), newLocal)
      )
 
+-- Defines a local variable.
+defineLocal :: StateT -> String -> LispVal -> StateTransformer LispVal
+defineLocal env id val = 
+  ST (\s t -> let (ST f)                       = eval env val
+                  (result, newState, newLocal) = f s t
+              in (result, newState, (insert id result newLocal))
+     )
 
 -- The maybe function yields a value of type b if the evaluation of 
 -- its third argument yields Nothing. In case it yields Just x, maybe
@@ -123,7 +133,7 @@ environment =
           $ insert "boolean?"       (Native predBoolean)
           $ insert "list?"          (Native predList)
           $ insert "eqv?"           (Native eqv)
-		  $ insert "lt?"            (Native lessThan)
+          $ insert "lt?"            (Native lessThan)
           $ insert "="              (Native equalsTo)
           $ insert ">"              (Native greaterThan)
           $ insert "<"              (Native lessThan)
@@ -148,13 +158,13 @@ type StateT = Map String LispVal
 -- because a StateTransformer gets the previous state of the interpreter 
 -- and, based on that state, performs a computation that might yield a modified
 -- state (a modification of the previous one). 
-data StateTransformer t = ST (StateT -> (t, StateT))
+data StateTransformer t = ST (StateT -> StateT -> (t, StateT, StateT)) -- adding two scopes (local and global)
 
 instance Monad StateTransformer where
-  return x = ST (\s -> (x, s))
-  (>>=) (ST m) f = ST (\s -> let (v, newS) = m s
-                                 (ST resF) = f v
-                             in  resF newS
+  return x = ST (\s t -> (x, s, t)) -- s is the global scope, while t is the local scope.
+  (>>=) (ST m) f = ST (\s t -> let (v, newS, newT) = m s t
+                                   (ST resF) = f v
+                               in  resF newS newT
                       )
     
 -----------------------------------------------------------
@@ -247,6 +257,22 @@ listEqv (x:xs) (y:ys) = if tmp == True
     where (Bool tmp) = eqv (x:[y])  
 --
 
+-- set!
+set :: StateT -> [LispVal] -> StateTransformer LispVal
+set env [(Atom id), val]          = setVarValue env id val
+set env [(List [(Atom id)]), val] = setVarValue env id val
+set env args                      = return (Error ("wrong number of arguments in set! = "++(show args)))
+
+setVarValue :: StateT -> String -> LispVal -> StateTransformer LispVal
+setVarValue env id val = ST $
+  (\s t -> let (ST m)          = eval env val
+               (r, newS, newT) = m s t
+           in if (id `member` newT)
+              then (r, newS, (insert id r newT))
+              else (r, (insert id r newS), newT)
+  )
+--
+
 -- /
 intDiv :: [LispVal] -> LispVal
 intDiv [] = (Error "wrong number of arguments in /.")
@@ -325,6 +351,39 @@ cons xs = (Error ("invalid list construction = "++(show xs)))
 --
 
 -----------------------------------------------------------
+--                      list-comp                        --
+-----------------------------------------------------------
+
+listCompAux :: StateT -> [LispVal] -> StateTransformer LispVal
+listCompAux env ((Atom var):(List (x:xs)):result:condition:[]) = set env [(Atom var), x] >> 
+                                                                 ST (\s t -> let (ST f)                       = eval env condition
+                                                                                 ((Bool condVal), tmpS, tmpT) = f s t
+                                                                                 (ST g)                       = eval env result
+                                                                                 (eltVal, newS1, newT1)       = g s t
+                                                                                 (ST h)                       = listCompAux env ((Atom var):(List xs):result:condition:[])
+                                                                                 (List tmpList, newS, newT)   = h newS1 newT1
+                                                                                 res                          = if (condVal == True)
+                                                                                                                then (eltVal:tmpList)
+                                                                                                                else tmpList
+                                                                             in ((List res), s, t)
+                                                                    )
+
+listCompAux _ ((Atom var):(List []):result:condition:[]) = ST (\s t -> ((List []), s, t))
+listCompAux _ xs = return (Error ("wrong number of arguments in list-comp = "++(show xs)))
+
+listComp :: StateT -> [LispVal] -> StateTransformer LispVal
+listComp env ((Atom var):list:result:condition:[]) = ST $
+  (\s t -> let (ST f)                  = eval env list
+               (listValue, tmpS, tmpT) = f s t
+               (ST g)                  = defineLocal env var (Number 0) >> listCompAux env ((Atom var):listValue:result:condition:[])
+               (r, newS, newT)         = g s t
+           in (r, s, t)
+  )
+
+listComp env xs = return (Error ("wong number of arguments in list-comp = "++(show xs)))
+
+
+-----------------------------------------------------------
 --                       comments                        --
 -----------------------------------------------------------
 ignoreComments :: LispVal -> LispVal
@@ -355,11 +414,11 @@ ifThenElse env xs                                    = return (Error ("wrong num
 --                     main FUNCTION                     --
 -----------------------------------------------------------
 
-showResult :: (LispVal, StateT) -> String
-showResult (val, defs) = show val ++ "\n" ++ show (toList defs) ++ "\n"
+showResult :: (LispVal, StateT, StateT) -> String
+showResult (val, defs, locals) = show val ++ "\n" ++ show (toList defs) ++ "\n"
 
-getResult :: StateTransformer LispVal -> (LispVal, StateT)
-getResult (ST f) = f empty -- we start with an empty state. 
+getResult :: StateTransformer LispVal -> (LispVal, StateT, StateT)
+getResult (ST f) = f empty empty -- we start with an empty state. 
 
 main :: IO ()
 main = do args <- getArgs
