@@ -49,6 +49,7 @@ eval env (List (Atom "begin":[v])) = eval env v
 eval env (List (Atom "begin": l: ls)) = (eval env l) >>= (\v -> case v of { (error@(Error _)) -> return error; otherwise -> eval env (List (Atom "begin": ls))})
 eval env (List (Atom "begin":[])) = return (List [])
 eval env lam@(List (Atom "lambda":(List formals):body:[])) = return lam
+eval env letArgs@(List (Atom "let":(List bindings):body:[])) = lispLet env bindings body
 -- The following line is slightly more complex because we are addressing the
 -- case where define is redefined by the user (whatever is the user's reason
 -- for doing so. The problem is that redefining define does not have
@@ -409,6 +410,14 @@ ifThenElse env ((Bool cond):consequent:[])           = if (cond == True)
                                                        else return (Error "if without an else.")
 ifThenElse env ((Error e):xs)                        = return (Error e)
 ifThenElse env xs                                    = return (Error ("wrong number of arguments in a if-then-else = "++(show xs)))
+
+-----------------------------------------------------------
+--                          let                          --
+-----------------------------------------------------------
+lispLet :: StateT -> [LispVal] -> LispVal -> StateTransformer LispVal
+lispLet env ((List ((Atom id):val:[])):[]) body = defineLocal env id val >> eval env body
+lispLet env ((List ((Atom id):val:[])):xs) body = defineLocal env id val >> lispLet env xs body
+lispLet _ _ _ = return (Error "wrong number of arguments in a let.")
 
 -----------------------------------------------------------
 --                     main FUNCTION                     --
