@@ -50,7 +50,6 @@ eval env (List (Atom "begin": l: ls)) = (eval env l) >>= (\v -> case v of { (err
 eval env (List (Atom "begin":[])) = return (List [])
 eval env lam@(List (Atom "lambda":(List formals):body:[])) = return lam
 eval env letArgs@(List (Atom "let":(List bindings):body:[])) = lispLet env bindings body
-eval env (List (Atom "class": dec:[])) = classDec env dec
 -- The following line is slightly more complex because we are addressing the
 -- case where define is redefined by the user (whatever is the user's reason
 -- for doing so. The problem is that redefining define does not have
