@@ -420,6 +420,15 @@ lispLet env ((List ((Atom id):val:[])):xs) body = defineLocal env id val >> lisp
 lispLet _ _ _ = return (Error "wrong number of arguments in a let.")
 
 -----------------------------------------------------------
+--                   class declaration                   --
+-----------------------------------------------------------
+
+classDec :: StateT -> LispVal -> StateTransformer LispVal
+classDec env (Class ((id,val):[])) = defineGlobal env id val
+classDec env (Class ((id,val):as)) = defineGlobal env id val >> classDec env (Class as)
+classDec _ _ = return (Error "wrong number of arguments in a Class declaration")
+
+-----------------------------------------------------------
 --                     main FUNCTION                     --
 -----------------------------------------------------------
 
