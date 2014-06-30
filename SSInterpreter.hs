@@ -58,6 +58,7 @@ eval env letArgs@(List (Atom "let":(List bindings):body:[])) = lispLet env bindi
 eval env (List (Atom "define": args)) = maybe (define env args) (\v -> return v) (Map.lookup "define" env)
 eval env (List (Atom "if":cond:consequent:alternate:[])) = eval env cond >>= (\t -> ifThenElse env (t:consequent:alternate:[]))
 eval env (List (Atom "set!": args)) = maybe (set env args) (\v -> return v) (Map.lookup "set!" env)
+eval env (List (Atom "define-struct":attributes:[])) = eval env attributes >>= classDeclaration env
 eval env (List (Atom "list-comp":var:list:result:condition:[])) = listComp env (var:list:result:condition:[])
 eval env (List (Atom func : args)) = mapM (eval env) args >>= apply env func 
 eval env (List list) = return (List list)
@@ -418,6 +419,17 @@ lispLet :: StateT -> [LispVal] -> LispVal -> StateTransformer LispVal
 lispLet env ((List ((Atom id):val:[])):[]) body = defineLocal env id val >> eval env body
 lispLet env ((List ((Atom id):val:[])):xs) body = defineLocal env id val >> lispLet env xs body
 lispLet _ _ _ = return (Error "wrong number of arguments in a let.")
+
+-----------------------------------------------------------
+--                    classes & objects                  --
+-----------------------------------------------------------
+classDeclaration :: StateT -> LispVal -> StateTransformer LispVal
+classDeclaration env attr@(List at) = return (Class (initAttr attr))
+classDeclaration _ _ = return (Error "invalid class declaration!")
+
+initAttr :: LispVal -> [(String, LispVal)]
+initAttr (List []) = []
+initAttr (List ((Atom name):l)) = (name, Null):(initAttr (List l))
 
 -----------------------------------------------------------
 --                     main FUNCTION                     --
