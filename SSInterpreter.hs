@@ -58,11 +58,22 @@ eval env letArgs@(List (Atom "let":(List bindings):body:[])) = lispLet env bindi
 eval env (List (Atom "define": args)) = maybe (define env args) (\v -> return v) (Map.lookup "define" env)
 eval env (List (Atom "if":cond:consequent:alternate:[])) = eval env cond >>= (\t -> ifThenElse env (t:consequent:alternate:[]))
 eval env (List (Atom "set!": args)) = maybe (set env args) (\v -> return v) (Map.lookup "set!" env)
-eval env (List (Atom "define-struct":attributes:[])) = eval env attributes >>= classDeclaration env
+eval env (List (Atom "define-struct":(Atom id):attributes:[])) = eval env attributes >>= classDeclaration env id
 eval env (List (Atom "list-comp":var:list:result:condition:[])) = listComp env (var:list:result:condition:[])
+
+eval env (List (Atom "new":(Atom class_name):(Atom id):attributes:[])) = ST (\s t -> let (ST f)                           = stateLookup env class_name
+                                                                                         (class_body, newState, newLocal) = f s t
+                                                                                         (ST g)                           = eval env attributes
+                                                                                         (attr, s1, l1)                   = g newState newLocal
+                                                                                         (ST obj)                         = newObject env class_body id attr
+                                                                                         (result, s2, l2)                 = obj s1 l1
+                                                                                      in (result, s2, l2)
+                                                                            )
+
 eval env (List (Atom func : args)) = mapM (eval env) args >>= apply env func 
 eval env (List list) = return (List list)
-eval env (Error s)  = return (Error s)
+eval env (Class lisp_class) = return (Class lisp_class) 
+eval env (Error s)  = return (Error s) 
 eval env form = return (Error ("Could not eval the special form: " ++ (show form)))
 
 stateLookup :: StateT -> String -> StateTransformer LispVal
@@ -423,13 +434,19 @@ lispLet _ _ _ = return (Error "wrong number of arguments in a let.")
 -----------------------------------------------------------
 --                    classes & objects                  --
 -----------------------------------------------------------
-classDeclaration :: StateT -> LispVal -> StateTransformer LispVal
-classDeclaration env attr@(List at) = return (Class (initAttr attr))
-classDeclaration _ _ = return (Error "invalid class declaration!")
+classDeclaration :: StateT -> String -> LispVal -> StateTransformer LispVal
+classDeclaration env id attr@(List at) = defineGlobal env id (Class (initAttr attr))
+classDeclaration _ _ _ = return (Error "invalid class declaration!")
 
 initAttr :: LispVal -> [(String, LispVal)]
 initAttr (List []) = []
 initAttr (List ((Atom name):l)) = (name, Null):(initAttr (List l))
+ 
+newObject env (Class klass) id (List attributes) = defineGlobal env id (Class (createObjects klass attributes))
+newObject _ _ _ _ = return (Error "class doesn't exist!")
+
+createObjects [] [] = []
+createObjects ((name, default_val):as) (val:xs) = (name, val):(createObjects as xs)
 
 -----------------------------------------------------------
 --                     main FUNCTION                     --
