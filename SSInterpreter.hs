@@ -62,14 +62,16 @@ eval env (List (Atom "define-struct":(Atom id):attributes:[])) = eval env attrib
 eval env (List (Atom "list-comp":var:list:result:condition:[])) = listComp env (var:list:result:condition:[])
 
 eval env (List (Atom "new":(Atom class_name):(Atom id):attributes:[])) = ST (\s t -> let (ST f)                           = stateLookup env class_name
-                                                                                         (class_body, newState, newLocal) = f s t
+                                                                                         (class_body, s0, l0)             = f s t
                                                                                          (ST g)                           = eval env attributes
-                                                                                         (attr, s1, l1)                   = g newState newLocal
+                                                                                         (attr, s1, l1)                   = g s0 l0
                                                                                          (ST obj)                         = newObject env class_body id attr
                                                                                          (result, s2, l2)                 = obj s1 l1
                                                                                       in (result, s2, l2)
                                                                             )
 
+eval env (List (Atom "applyMethod":class_name:(Atom method):args:[])) = eval env class_name >>= getAttribute method >>= defineLocal env method >> eval env args >>= (\t -> apply env method [t])
+eval env (List (Atom "getAttribute":klass:(Atom name):[])) = eval env klass >>= getAttribute name 
 eval env (List (Atom func : args)) = mapM (eval env) args >>= apply env func 
 eval env (List list) = return (List list)
 eval env (Class lisp_class) = return (Class lisp_class) 
@@ -447,6 +449,15 @@ newObject _ _ _ _ = return (Error "class doesn't exist!")
 
 createObjects [] [] = []
 createObjects ((name, default_val):as) (val:xs) = (name, val):(createObjects as xs)
+
+getAttribute name (Class klass) = return (search name klass)
+getAttribute _ _ = return (Error ("Invalid attribute!"))
+
+search _ [] = Error ("404: Attribute not found!")
+search name ((id,val):as) | name == id = val
+                          | otherwise = search name as
+
+
 
 -----------------------------------------------------------
 --                     main FUNCTION                     --
