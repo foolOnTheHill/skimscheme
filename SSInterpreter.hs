@@ -70,7 +70,7 @@ eval env (List (Atom "new":(Atom class_name):(Atom id):attributes:[])) = ST (\s 
                                                                                       in (result, s2, l2)
                                                                             )
 
-eval env (List (Atom "applyMethod":class_name:(Atom method):args:[])) = eval env class_name >>= getAttribute method >>= defineLocal env method >> eval env args >>= (\t -> apply env method [t])
+eval env (List (Atom "applyMethod":class_name:(Atom method):args:[])) = eval env class_name >>= \c -> getAttribute method c >>= defineLocal env method >> eval env args >>= (\t -> objectApply env c method [t])
 eval env (List (Atom "getAttribute":class_name:(Atom attribute):[])) = eval env class_name >>= getAttribute attribute
 eval env (List (Atom "setAttribute":class_name:(Atom attribute):value:[])) = eval env class_name >>= \c -> eval env value >>= setAttribute env c attribute class_name
 
@@ -128,7 +128,7 @@ apply env func args =
                             List (Atom "lambda" : List formals : body:l) -> lambda env formals body args                              
                             otherwise -> return (Error "not a function.")
                         )
- 
+
 -- The lambda function is an auxiliary function responsible for
 -- applying user-defined functions, instead of native ones. We use a very stupid 
 -- kind of dynamic variable (parameter) scoping that does not even support
@@ -137,7 +137,6 @@ lambda :: StateT -> [LispVal] -> LispVal -> [LispVal] -> StateTransformer LispVa
 lambda env formals body args = 
   let dynEnv = Prelude.foldr (\(Atom f, a) m -> Map.insert f a m) env (zip formals args)
   in  eval dynEnv body
-
 
 -- Initial environment of the programs. Maps identifiers to values. 
 -- Initially, maps function names to function values, but there's 
@@ -470,6 +469,23 @@ setAttribute env (Class myclass) attribute id value = set env [id, (Class newVal
                                                  then (attr, newV):xs
                                                  else (attr, v):(changeValue xs name newV)
           newValue = changeValue myclass attribute value
+
+objectApply :: StateT -> LispVal -> String -> [LispVal] -> StateTransformer LispVal
+objectApply env obj func args =  
+                  case (Map.lookup func env) of
+                      Just (Native f)  -> return (f args)
+                      otherwise -> 
+                        (stateLookup env func >>= \res -> 
+                          case res of 
+                            List (Atom "lambda" : List formals : body:l) -> objectLambda env obj formals body args                              
+                            otherwise -> return (Error "not a function.")
+                        )
+
+objectLambda :: StateT -> LispVal -> [LispVal] -> LispVal -> [LispVal] -> StateTransformer LispVal
+objectLambda env (Class obj) formals body args =
+  let currentObj = [[(Atom ("this:"++attr), val) | (attr, val) <- obj]]++(zip formals args)
+      dynEnv = Prelude.foldr (\(Atom f, a) m -> Map.insert f a m) env currentObj
+  in  eval dynEnv body
 
 -----------------------------------------------------------
 --                     main FUNCTION                     --
