@@ -2,11 +2,6 @@
 --   Remaining functionalities  --
 ----------------------------------
 
-* let;
-* class declaration;
-* object instantiation;
-* attribute access;
-* calling methods;
 * object reference;
 
 ----------------------------------
@@ -23,3 +18,9 @@
 * lt?;
 * set!;
 * list-comp;
+* let;
+* class declaration;
+* object instantiation;
+* attribute access;
+* calling methods;
+
