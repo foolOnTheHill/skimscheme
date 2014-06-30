@@ -71,7 +71,9 @@ eval env (List (Atom "new":(Atom class_name):(Atom id):attributes:[])) = ST (\s 
                                                                             )
 
 eval env (List (Atom "applyMethod":class_name:(Atom method):args:[])) = eval env class_name >>= getAttribute method >>= defineLocal env method >> eval env args >>= (\t -> apply env method [t])
-eval env (List (Atom "getAttribute":klass:(Atom name):[])) = eval env klass >>= getAttribute name 
+eval env (List (Atom "getAttribute":class_name:(Atom attribute):[])) = eval env class_name >>= getAttribute attribute
+eval env (List (Atom "setAttribute":class_name:(Atom attribute):value:[])) = eval env class_name >>= \c -> eval env value >>= setAttribute env c attribute class_name
+
 eval env (List (Atom func : args)) = mapM (eval env) args >>= apply env func 
 eval env (List list) = return (List list)
 eval env (Class lisp_class) = return (Class lisp_class) 
@@ -443,21 +445,31 @@ classDeclaration _ _ _ = return (Error "invalid class declaration!")
 initAttr :: LispVal -> [(String, LispVal)]
 initAttr (List []) = []
 initAttr (List ((Atom name):l)) = (name, Null):(initAttr (List l))
- 
+
+newObject :: StateT -> LispVal -> String -> LispVal -> StateTransformer LispVal
 newObject env (Class klass) id (List attributes) = defineGlobal env id (Class (createObjects klass attributes))
 newObject _ _ _ _ = return (Error "class doesn't exist!")
 
+createObjects :: [(String, LispVal)] -> [LispVal] -> [(String, LispVal)]
 createObjects [] [] = []
 createObjects ((name, default_val):as) (val:xs) = (name, val):(createObjects as xs)
 
+getAttribute :: String -> LispVal -> StateTransformer LispVal
 getAttribute name (Class klass) = return (search name klass)
-getAttribute _ _ = return (Error ("Invalid attribute!"))
+getAttribute _ _ = return (Error ("invalid attribute name!"))
 
-search _ [] = Error ("404: Attribute not found!")
+search :: String -> [(String, LispVal)] -> LispVal
+search _ [] = Error ("attribute not found!")
 search name ((id,val):as) | name == id = val
                           | otherwise = search name as
 
-
+setAttribute :: StateT -> LispVal -> String -> LispVal -> LispVal -> StateTransformer LispVal
+setAttribute env (Class myclass) attribute id value = set env [id, (Class newValue)]
+    where changeValue [] _ _ = []
+          changeValue ((attr, v):xs) name newV = if attr == name
+                                                 then (attr, newV):xs
+                                                 else (attr, v):(changeValue xs name newV)
+          newValue = changeValue myclass attribute value
 
 -----------------------------------------------------------
 --                     main FUNCTION                     --
