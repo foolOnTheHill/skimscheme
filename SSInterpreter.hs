@@ -259,6 +259,7 @@ eqv :: [LispVal] -> LispVal
 eqv ((String a):(String b):[]) = (Bool (a == b))
 eqv ((Number a):(Number b):[]) = (Bool (a == b))
 eqv ((List a):(List b):[])     = (listEqv a b)
+eqv ((Bool a):(Bool b):[])     = (Bool (a == b))
 eqv ((Null):(Null):[])         = (Bool True)
 eqv (a:b:[])                   = (Bool False)
 eqv (_:[]) = (Error "wrong number of arguments in eqv?.")
