@@ -41,6 +41,7 @@ import SSPrettyPrinter
 -----------------------------------------------------------
 eval :: StateT -> LispVal -> StateTransformer LispVal
 eval env val@(String _) = return val
+eval env val@(Atom "null") = return (Null)
 eval env val@(Atom var) = stateLookup env var 
 eval env val@(Number _) = return val
 eval env val@(Bool _) = return val
@@ -71,9 +72,8 @@ eval env (List (Atom "new":(Atom class_name):(Atom id):attributes:[])) = ST (\s 
                                                                             )
 
 eval env (List (Atom "applyMethod":class_name:(Atom method):args:[])) = eval env class_name >>= \c -> getAttribute method c >>= defineLocal env method >> eval env args >>= (\t -> objectApply env c method [t])
-eval env (List (Atom "getAttribute":class_name:(Atom attribute):[])) = eval env class_name >>= getAttribute attribute
+eval env (List (Atom "getAttribute":class_name:(Atom attribute):[])) = eval env class_name >>= getAttribute attribute >>= eval env
 eval env (List (Atom "setAttribute":class_name:(Atom attribute):value:[])) = eval env class_name >>= \c -> eval env value >>= setAttribute env c attribute class_name
-
 eval env (List (Atom func : args)) = mapM (eval env) args >>= apply env func 
 eval env (List list) = return (List list)
 eval env (Class lisp_class) = return (Class lisp_class) 
@@ -126,7 +126,7 @@ apply env func args =
                         (stateLookup env func >>= \res -> 
                           case res of 
                             List (Atom "lambda" : List formals : body:l) -> lambda env formals body args                              
-                            otherwise -> return (Error "not a function.")
+                            otherwise -> return (Error ("not a function."))
                         )
 
 -- The lambda function is an auxiliary function responsible for
@@ -259,6 +259,7 @@ eqv :: [LispVal] -> LispVal
 eqv ((String a):(String b):[]) = (Bool (a == b))
 eqv ((Number a):(Number b):[]) = (Bool (a == b))
 eqv ((List a):(List b):[])     = (listEqv a b)
+eqv ((Null):(Null):[])         = (Bool True)
 eqv (a:b:[])                   = (Bool False)
 eqv (_:[]) = (Error "wrong number of arguments in eqv?.")
 eqv args@(_:_:_) = (Error ("wrong number of arguments in eqv?."++(show args)))
@@ -432,7 +433,7 @@ ifThenElse env xs                                    = return (Error ("wrong num
 lispLet :: StateT -> [LispVal] -> LispVal -> StateTransformer LispVal
 lispLet env ((List ((Atom id):val:[])):[]) body = defineLocal env id val >> eval env body
 lispLet env ((List ((Atom id):val:[])):xs) body = defineLocal env id val >> lispLet env xs body
-lispLet _ _ _ = return (Error "wrong number of arguments in a let.")
+lispLet _ _ _ = return (Error "wrong number of arguments in a let!")
 
 -----------------------------------------------------------
 --                    classes & objects                  --
@@ -455,7 +456,7 @@ createObjects ((name, default_val):as) (val:xs) = (name, val):(createObjects as 
 
 getAttribute :: String -> LispVal -> StateTransformer LispVal
 getAttribute name (Class klass) = return (search name klass)
-getAttribute _ _ = return (Error ("invalid attribute name!"))
+getAttribute _ _ = return (Error ("invalid attribute or class name!"))
 
 search :: String -> [(String, LispVal)] -> LispVal
 search _ [] = Error ("attribute not found!")
@@ -469,6 +470,7 @@ setAttribute env (Class myclass) attribute id value = set env [id, (Class newVal
                                                  then (attr, newV):xs
                                                  else (attr, v):(changeValue xs name newV)
           newValue = changeValue myclass attribute value
+setAttribute _ _ _ _ _ = return (Error "invalid attribute or class name!")
 
 objectApply :: StateT -> LispVal -> String -> [LispVal] -> StateTransformer LispVal
 objectApply env obj func args =  
@@ -478,12 +480,12 @@ objectApply env obj func args =
                         (stateLookup env func >>= \res -> 
                           case res of 
                             List (Atom "lambda" : List formals : body:l) -> objectLambda env obj formals body args                              
-                            otherwise -> return (Error "not a function.")
+                            otherwise -> return (Error "not a method.")
                         )
 
 objectLambda :: StateT -> LispVal -> [LispVal] -> LispVal -> [LispVal] -> StateTransformer LispVal
 objectLambda env (Class obj) formals body args =
-  let currentObj = [[(Atom ("this:"++attr), val) | (attr, val) <- obj]]++(zip formals args)
+  let currentObj = [(Atom ("this:"++attr), val) | (attr, val) <- obj]++(zip formals args)
       dynEnv = Prelude.foldr (\(Atom f, a) m -> Map.insert f a m) env currentObj
   in  eval dynEnv body
 
@@ -492,7 +494,7 @@ objectLambda env (Class obj) formals body args =
 -----------------------------------------------------------
 
 showResult :: (LispVal, StateT, StateT) -> String
-showResult (val, defs, locals) = show val ++ "\n" ++ show (toList defs) ++ "\n"
+showResult (val, defs, locals) = show val ++ "\n\nGlobal:" ++ show (toList defs) ++ "\nLocal:" ++ show (toList locals) ++ "\n"
 
 getResult :: StateTransformer LispVal -> (LispVal, StateT, StateT)
 getResult (ST f) = f empty empty -- we start with an empty state. 

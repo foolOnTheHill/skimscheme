@@ -6,7 +6,8 @@ import LispVal
 -----------------------------------------------------------
 
 -- Pretty-printing for LispVal values. 
-instance Show LispVal where 
+instance Show LispVal where
+  show (Null) = "null" 
   show (Bool True) = "#t"
   show (Bool False) = "#f"
   show (Number num) = show num
@@ -14,7 +15,8 @@ instance Show LispVal where
   show (Atom name) = name
   show (List (Atom "lambda" : l)) = "lambda " ++ show (List l) 
   show (List l) = "(" ++ showListContents l ++ ")"
-  show (DottedList h t) = "(" ++ showListContents h ++ " . " ++ show t ++ ")"  
+  show (DottedList h t) = "(" ++ showListContents h ++ " . " ++ show t ++ ")" 
+  show (Class c) = "{ " ++ (showObject c) ++ "}" 
   show (Native p) = "<native procedure>"
   show (Error s) = s
   
@@ -26,3 +28,6 @@ showListContents [] = ""
 showListContents [a] = show a
 showListContents (a:as) = show a ++ " " ++ (showListContents as)
 
+showObject :: [(String, LispVal)] -> String
+showObject [] = ""
+showObject ((a, v):as) = (show a) ++ ": " ++ (show v) ++ "; " ++ (showObject as)
